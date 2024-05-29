@@ -1,0 +1,91 @@
+#! /usr/bin/python3
+
+import re
+import sys
+import xml.etree.ElementTree as ET
+import unicodedata
+import unidecode
+
+
+def load_mm():
+    tree = ET.parse(sys.stdin)
+    return tree
+
+class PolishRanking:
+    def __init__(self):
+        self.players = []
+
+
+    @staticmethod
+    def convert_rankname(rankname):
+        mapping = {'dan': 'd', 'd': 'd', 'pro': 'p', 'p': 'p', 'kyu': 'k', 'k': 'k'}
+        return mapping[rankname]
+
+
+    def get_players_ranklist(self):
+        with open("lista_psg_h_utf8.htm", "r", encoding="utf8") as rankfile:
+            player_pattern = re.compile(r'\|\s*\d+\s*\|\s+(?P<surname>[^\s]+)\s+(?P<firstname>[^\s]+)\s+(?P<rank>\d+)(?P<rankname>\w+)\s+\|\s+(?P<city>[^|]+)\|.*key=(?P<pin>\d+)\'')
+            for line in rankfile:
+                match = player_pattern.match(line)
+#                print(match, file=sys.stderr)
+                if match:
+                    name = "%s %s" % (match.group("firstname").strip(), match.group("surname").strip())
+                    ascii_name = unidecode.unidecode(name)
+                    #print(name)
+                    self.players.append((ascii_name,
+                        name,
+                        "%s%s" % (match.group("rank").strip(),
+                                  self.convert_rankname(match.group("rankname").strip())),
+                        match.group("city").strip(),
+                        int(match.group("pin"))))
+#       print(self.players)
+
+
+    def find_player(self, name):
+        ascii = list(filter(lambda el: el[0] == name, self.players))
+        if len(ascii) > 0:
+            return ascii
+        unicode = list(filter(lambda el: el[1] == name, self.players))
+        return unicode
+
+    def find_by_pin(self, pin):
+        m = list(filter(lambda el: el[4] == pin, self.players))
+        if len(m) > 0:
+            return m[0]
+        return None
+
+
+ranking = PolishRanking()
+ranking.get_players_ranklist()
+
+t = load_mm()
+root = t.getroot()
+
+def get_name(player):
+    return "%s %s" % (player.find('FirstName').text, player.find('Surname').text)
+
+#players = {}
+#for pl in t.findall('IndividualParticipant'):
+#    i = int(pl.find('Id').text)
+#    players[i] = pl.find('GoPlayer')
+
+players = {int(p.find('Id').text): p.find('GoPlayer') for p in t.findall('IndividualParticipant') }
+pairings = t.findall('TournamentRound')
+
+pairs = []
+index = len(pairings)
+
+while len(pairs) == 0 or index >= 0:
+    index -= 1
+    pairs = pairings[index].findall('Pairing')
+
+for pair in pairs:
+    black_no = int(pair.find('Black').text)
+    white_no = int(pair.find('White').text)
+
+    black = get_name(players[black_no])
+    white = get_name(players[white_no])
+
+    print("%s\t%s" % (black, white))
+
+
